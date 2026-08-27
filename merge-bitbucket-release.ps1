@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Bitbucket 저장소별 지정 브랜치를 skhynix-release 브랜치로 병합하고 push합니다.
 
@@ -13,14 +13,13 @@
 
 [CmdletBinding()]
 param(
-    [string]$BitbucketHost = 'testbuc.com',
-    [string]$Workspace = 'testws',
+    [string]$BitbucketHost = 'github.com',
+    [string]$Workspace = 'SIMMINGI',
     [string]$TargetBranch = 'skhynix-release'
 )
 
 $Repositories = @(
-    [pscustomobject]@{ Name = 'testrepo1'; SourceBranch = 'dev' }
-    [pscustomobject]@{ Name = 'testrepo2'; SourceBranch = 'main' }
+    [pscustomobject]@{ Name = 'pstest'; SourceBranch = 'main' }
 )
 
 $ErrorActionPreference = 'Stop'
