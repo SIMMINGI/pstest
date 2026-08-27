@@ -11,11 +11,18 @@
     .\merge-bitbucket-release.ps1
 #>
 
+# 링크 예제 git@github.com:SIMMINGI/pstest.git
+#param(
+#    [string]$BitbucketHost = 'github.com',
+#    [string]$Workspace = 'SIMMINGI',
+#    [string]$TargetBranch = 'test-branch'
+#
+
 [CmdletBinding()]
 param(
     [string]$BitbucketHost = 'github.com',
     [string]$Workspace = 'SIMMINGI',
-    [string]$TargetBranch = 'skhynix-release'
+    [string]$TargetBranch = 'test-branch'
 )
 
 $Repositories = @(
