@@ -22,7 +22,8 @@
 param(
     [string]$BitbucketHost = 'github.com',
     [string]$Workspace = 'SIMMINGI',
-    [string]$TargetBranch = 'test-branch'
+    [string]$TargetBranch = 'test-branch',
+    [string]$WorkRootBase = 'C:\git-tmp'
 )
 
 $Repositories = @(
@@ -50,13 +51,15 @@ function Invoke-Git {
         [switch]$AllowFailure
     )
 
-    Write-Log 'INFO' ("git {0}" -f ($Arguments -join ' '))
+    # Git for Windows가 기존 MAX_PATH 제한을 우회하도록 모든 호출에 적용합니다.
+    $effectiveArguments = @('-c', 'core.longpaths=true') + $Arguments
+    Write-Log 'INFO' ("git {0}" -f ($effectiveArguments -join ' '))
     # Windows PowerShell 5.1은 native stderr를 ErrorRecord로 변환합니다.
     # git의 종료 코드를 직접 판정할 수 있도록 호출 중에는 non-terminating으로 수집합니다.
     $previousErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $output = @(& git @Arguments 2>&1)
+        $output = @(& git @effectiveArguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -70,9 +73,9 @@ function Invoke-Git {
     if ($exitCode -ne 0 -and -not $AllowFailure) {
         $details = ($output | Out-String).Trim()
         if ($details) {
-            throw "git 명령 실패(exit=$exitCode): git $($Arguments -join ' ')`n$details"
+            throw "git 명령 실패(exit=$exitCode): git $($effectiveArguments -join ' ')`n$details"
         }
-        throw "git 명령 실패(exit=$exitCode): git $($Arguments -join ' ')"
+        throw "git 명령 실패(exit=$exitCode): git $($effectiveArguments -join ' ')"
     }
 
     return [pscustomobject]@{
@@ -108,7 +111,9 @@ if ([string]::IsNullOrWhiteSpace($BitbucketHost) -or
     exit 1
 }
 
-$workRoot = Join-Path ([IO.Path]::GetTempPath()) ("merge-bitbucket-release-{0}" -f [guid]::NewGuid())
+# 임시 경로 자체도 짧게 유지하여 깊은 저장소의 checkout 경로를 최대한 줄입니다.
+$workId = [guid]::NewGuid().ToString('N').Substring(0, 8)
+$workRoot = Join-Path $workRootBase ("mbr-$workId")
 $results = [System.Collections.Generic.List[object]]::new()
 
 try {
