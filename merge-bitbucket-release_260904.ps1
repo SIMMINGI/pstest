@@ -3,12 +3,13 @@
     Bitbucket 저장소별 지정 브랜치를 skhynix-release 브랜치로 병합하고 push합니다.
 
 .DESCRIPTION
-    기존 SSH 키 또는 SSH agent 인증을 사용합니다. 각 저장소는 독립된 임시 폴더에서
-    처리하므로 한 저장소에서 충돌이나 오류가 발생해도 다음 저장소를 계속 처리합니다.
+    기존 SSH 키 또는 SSH agent 인증을 사용합니다. 각 저장소는 WorkRootBase 아래의
+    전용 폴더에 보관되며, 이후 실행에서는 clone 대신 기존 저장소를 fetch하여 재사용합니다.
+    한 저장소에서 충돌이나 오류가 발생해도 다음 저장소를 계속 처리합니다.
     대상 브랜치가 원격에 없으면 자동으로 만들지 않고 해당 저장소를 실패 처리합니다.
 
 .EXAMPLE
-    .\merge-bitbucket-release.ps1
+    .\merge-bitbucket-release_260904.ps1
 #>
 
 # 링크 예제 git@github.com:SIMMINGI/pstest.git
@@ -111,19 +112,16 @@ if ([string]::IsNullOrWhiteSpace($BitbucketHost) -or
     exit 1
 }
 
-# 임시 경로 자체도 짧게 유지하여 깊은 저장소의 checkout 경로를 최대한 줄입니다.
-$workId = [guid]::NewGuid().ToString('N').Substring(0, 8)
-$workRoot = Join-Path $workRootBase ("mbr-$workId")
 $results = [System.Collections.Generic.List[object]]::new()
 
 try {
-    New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $WorkRootBase -Force | Out-Null
     Invoke-Git -Arguments @('--version') | Out-Null
 
     foreach ($repository in $Repositories) {
         $name = [string]$repository.Name
         $sourceBranch = [string]$repository.SourceBranch
-        $repositoryPath = Join-Path $workRoot $name
+        $repositoryPath = Join-Path $WorkRootBase $name
         $repositoryUrl = "git@${BitbucketHost}:$Workspace/$name.git"
 
         Write-Log 'INFO' "[$name] $sourceBranch -> $TargetBranch 병합을 시작합니다."
@@ -136,7 +134,26 @@ try {
                 throw "소스 브랜치와 대상 브랜치가 같습니다: $sourceBranch"
             }
 
-            Invoke-Git -Arguments @('clone', '--origin', 'origin', $repositoryUrl, $repositoryPath) | Out-Null
+            if (Test-Path -LiteralPath $repositoryPath) {
+                if (-not (Test-Path -LiteralPath (Join-Path $repositoryPath '.git'))) {
+                    throw "기존 경로가 Git 저장소가 아닙니다: $repositoryPath"
+                }
+
+                $originResult = Invoke-Git -Arguments @(
+                    '-C', $repositoryPath,
+                    'remote', 'get-url', 'origin'
+                )
+                $actualOrigin = (($originResult.Output | ForEach-Object { "$_" }) -join "`n").Trim()
+                if ($actualOrigin -ne $repositoryUrl) {
+                    throw "기존 저장소의 origin URL이 다릅니다: $actualOrigin (예상: $repositoryUrl)"
+                }
+
+                Write-Log 'INFO' "[$name] 기존 저장소를 재사용합니다: $repositoryPath"
+            }
+            else {
+                Invoke-Git -Arguments @('clone', '--origin', 'origin', $repositoryUrl, $repositoryPath) | Out-Null
+            }
+
             Invoke-Git -Arguments @('-C', $repositoryPath, 'fetch', '--prune', 'origin') | Out-Null
 
             if (-not (Test-RemoteBranch -RepositoryPath $repositoryPath -Branch $sourceBranch)) {
@@ -188,12 +205,6 @@ catch {
     Write-Log 'ERROR' "실행 준비 중 오류가 발생했습니다: $($_.Exception.Message)"
     exit 1
 }
-finally {
-    if (Test-Path -LiteralPath $workRoot) {
-        Remove-Item -LiteralPath $workRoot -Recurse -Force
-    }
-}
-
 Write-Host ''
 Write-Host '================ 처리 결과 ================'
 $results | Format-Table Repository, SourceBranch, Status, Message -AutoSize -Wrap
